@@ -52,7 +52,7 @@ class TTSConfig(Base):
     provider: str = "cosyvoice"       # extension point; only cosyvoice implemented
     api_key: str = ""                 # falls back to DASHSCOPE_API_KEY env var
     voice: str = "Asuka-Plus"         # CosyVoice voice ID
-    model: str = "cosyvoice-v2-plus"  # model name — confirm against Bailian docs
+    model: str = "cosyvoice-v3.5-plus"  # model name — confirm against Bailian docs
     format: str = "mp3"               # output format
 
 class WeixinConfig(Base):
@@ -68,7 +68,7 @@ User config example (`~/.nanobot/config.json`):
       "tts": {
         "api_key": "sk-xxx",
         "voice": "Asuka-Plus",
-        "model": "cosyvoice-v2-plus"
+        "model": "cosyvoice-v3.5-plus"
       }
     }
   }
