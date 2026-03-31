@@ -69,11 +69,11 @@ MAX_QR_REFRESH_COUNT = 3
 # Default long-poll timeout; overridden by server via longpolling_timeout_ms.
 DEFAULT_LONG_POLL_TIMEOUT_S = 35
 
-# Media-type codes for getuploadurl  (1=image, 2=video, 3=file)
+# Media-type codes for getuploadurl  (1=image, 2=video, 3=file, 4=voice)
 UPLOAD_MEDIA_IMAGE = 1
 UPLOAD_MEDIA_VIDEO = 2
 UPLOAD_MEDIA_FILE = 3
-UPLOAD_MEDIA_VOICE = 4          # value to verify against WeChat ilink API docs
+UPLOAD_MEDIA_VOICE = 4
 
 # File extensions considered as images / videos / voices for outbound media
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg"}
