@@ -81,6 +81,12 @@ Templates are in `nanobot/templates/`.
 - `main` — stable (bug fixes, docs)
 - `nightly` — new features and experiments (cherry-picked to main)
 
+### PR Workflow
+
+- All changes (including bug fixes) must go through a feature branch + PR — never push directly to `main`
+- PRs must be created against the fork (`caitengwei/nanobot`), not the upstream (`HKUDS/nanobot`)
+- Always use `gh pr create --repo caitengwei/nanobot` explicitly
+
 ## Code Conventions
 
 - Python 3.11+, full type annotations, Pydantic V2 for data models
