@@ -38,7 +38,7 @@ class TTSConfig(Base):
     provider: str = "cosyvoice"   # only cosyvoice implemented
     api_key: str = ""             # falls back to DASHSCOPE_API_KEY env var
     voice: str = "Asuka-Plus"     # CosyVoice voice ID
-    model: str = "cosyvoice-v2-plus"  # confirm against Bailian docs at runtime
+    model: str = "cosyvoice-v3.5-plus"  # confirm against Bailian docs at runtime
     format: str = "mp3"           # output audio format
 ```
 
@@ -68,7 +68,7 @@ from nanobot.channels.weixin import WeixinConfig
 from nanobot.config.schema import TTSConfig
 c = WeixinConfig()
 print(c.tts.voice)        # Asuka-Plus
-print(c.tts.model)        # cosyvoice-v2-plus
+print(c.tts.model)        # cosyvoice-v3.5-plus
 c2 = WeixinConfig.model_validate({'tts': {'voice': 'MyVoice', 'api_key': 'sk-x'}})
 print(c2.tts.voice)       # MyVoice
 print(c2.tts.api_key)     # sk-x
@@ -78,7 +78,7 @@ print(c2.tts.api_key)     # sk-x
 Expected output:
 ```
 Asuka-Plus
-cosyvoice-v2-plus
+cosyvoice-v3.5-plus
 MyVoice
 sk-x
 ```
@@ -116,7 +116,7 @@ from nanobot.providers.tts import CosyVoiceTTSProvider
 
 
 def _provider(api_key: str = "sk-test") -> CosyVoiceTTSProvider:
-    return CosyVoiceTTSProvider(TTSConfig(api_key=api_key, voice="Asuka-Plus", model="cosyvoice-v2-plus"))
+    return CosyVoiceTTSProvider(TTSConfig(api_key=api_key, voice="Asuka-Plus", model="cosyvoice-v3.5-plus"))
 
 
 @pytest.mark.asyncio
@@ -297,7 +297,7 @@ def _make_channel(tts_api_key: str = "") -> WeixinChannel:
             enabled=True,
             allow_from=["*"],
             state_dir=tempfile.mkdtemp(prefix="nanobot-weixin-tts-test-"),
-            tts=TTSConfig(api_key=tts_api_key, voice="Asuka-Plus", model="cosyvoice-v2-plus"),
+            tts=TTSConfig(api_key=tts_api_key, voice="Asuka-Plus", model="cosyvoice-v3.5-plus"),
         ),
         bus,
     )
@@ -688,7 +688,7 @@ Config to add in `~/.nanobot/config.json` on Mac Mini:
       "tts": {
         "api_key": "<DASHSCOPE_API_KEY>",
         "voice": "Asuka-Plus",
-        "model": "cosyvoice-v2-plus"
+        "model": "cosyvoice-v3.5-plus"
       }
     }
   }

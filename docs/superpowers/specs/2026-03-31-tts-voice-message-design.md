@@ -160,10 +160,14 @@ async def send(self, msg: OutboundMessage) -> None:
     wants_voice = self._voice_sessions.pop(msg.chat_id, False)
 
     if wants_voice and msg.content and self._tts_provider:
-        tmp = Path(tempfile.mktemp(suffix=".mp3", prefix="nanobot-tts-"))
-        ok = await self._tts_provider.synthesize(msg.content, tmp)
-        if ok:
-            await self._send_media_file(chat_id, tmp, context_token)
+        tts_suffix = f".{self.config.tts.format}"
+        with tempfile.NamedTemporaryFile(suffix=tts_suffix, prefix="nanobot-tts-", delete=False) as tf:
+            tmp = Path(tf.name)
+        try:
+            ok = await self._tts_provider.synthesize(msg.content, tmp)
+            if ok:
+                await self._send_media_file(chat_id, str(tmp), context_token)
+        finally:
             tmp.unlink(missing_ok=True)
         # TTS failure is non-fatal; text is always sent
 

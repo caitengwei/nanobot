@@ -76,7 +76,7 @@ class CosyVoiceTTSProvider:
             )
             audio_data = result.get_audio_data()
             if not audio_data:
-                logger.warning("TTS: CosyVoice returned empty audio for text length={}", len(text))
+                logger.warning("TTS: CosyVoice returned empty audio for tts_text length={}", len(tts_text))
                 return False
             Path(output_path).write_bytes(audio_data)
             logger.debug("TTS: synthesised {} bytes → {}", len(audio_data), output_path)
