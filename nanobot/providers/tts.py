@@ -71,7 +71,7 @@ class CosyVoiceTTSProvider:
                 model=self.config.model,
                 text=tts_text,
                 voice=self.config.voice,
-                format=self.config.format,
+                format=(self.config.format or "").strip().lstrip(".").lower() or "mp3",
                 api_key=self.api_key,
             )
             audio_data = result.get_audio_data()

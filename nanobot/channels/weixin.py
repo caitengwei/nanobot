@@ -135,7 +135,7 @@ class WeixinChannel(BaseChannel):
         self._voice_sessions: dict[str, bool] = {}
         from nanobot.providers.tts import CosyVoiceTTSProvider, strip_tts_control_tags
         self._strip_tts_tags = strip_tts_control_tags
-        if self.config.tts.provider != "cosyvoice":
+        if self.config.tts.provider.strip().lower() != "cosyvoice":
             logger.warning(
                 "WeChat TTS: provider '{}' is not implemented; falling back to CosyVoice",
                 self.config.tts.provider,
