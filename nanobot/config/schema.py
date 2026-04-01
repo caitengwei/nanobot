@@ -29,7 +29,7 @@ class TTSConfig(Base):
     voice: str = "Asuka-Plus"         # CosyVoice voice ID
     model: str = "cosyvoice-v3.5-plus"
     format: str = "mp3"               # output audio format
-    preamble: str = "式波明日香，傲娇直率，情绪外放。"  # prepended to every TTS call
+    preamble: str = ""                # prepended to every TTS call; set in config for persona
 
 
 class ChannelsConfig(Base):
