@@ -12,6 +12,18 @@ def _provider(api_key: str = "sk-test") -> CosyVoiceTTSProvider:
     return CosyVoiceTTSProvider(TTSConfig(api_key=api_key, voice="Asuka-Plus", model="cosyvoice-v3.5-plus"))
 
 
+def _mock_tts_v2(audio_bytes: bytes | None = b"fake-mp3-bytes"):
+    """Return (mock_module, mock_instance) for dashscope.audio.tts_v2."""
+    mock_instance = MagicMock()
+    mock_instance.call.return_value = audio_bytes
+    mock_class = MagicMock(return_value=mock_instance)
+    mock_module = MagicMock()
+    mock_module.SpeechSynthesizer = mock_class
+    mock_module.AudioFormat = MagicMock()
+    mock_module.AudioFormat.MP3_16000HZ_MONO_128KBPS = MagicMock()
+    return mock_module, mock_instance
+
+
 @pytest.mark.asyncio
 async def test_cosyvoice_no_api_key_returns_false(tmp_path, monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
@@ -24,7 +36,7 @@ async def test_cosyvoice_no_api_key_returns_false(tmp_path, monkeypatch):
 async def test_cosyvoice_import_error_returns_false(tmp_path, monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     provider = _provider()
-    with patch.dict("sys.modules", {"dashscope": None, "dashscope.audio": None, "dashscope.audio.tts_v3": None}):
+    with patch.dict("sys.modules", {"dashscope": None, "dashscope.audio": None, "dashscope.audio.tts_v2": None}):
         result = await provider.synthesize("hello", tmp_path / "out.mp3")
     assert result is False
 
@@ -33,11 +45,13 @@ async def test_cosyvoice_import_error_returns_false(tmp_path, monkeypatch):
 async def test_cosyvoice_empty_audio_returns_false(tmp_path, monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     provider = _provider()
-    mock_result = MagicMock()
-    mock_result.get_audio_data.return_value = None
-    mock_synthesizer = MagicMock()
-    mock_synthesizer.call.return_value = mock_result
-    with patch.dict("sys.modules", {"dashscope": MagicMock(), "dashscope.audio": MagicMock(), "dashscope.audio.tts_v3": MagicMock(SpeechSynthesizer=mock_synthesizer)}):
+    mock_tts_v2, _ = _mock_tts_v2(audio_bytes=None)
+    mock_dashscope = MagicMock()
+    with patch.dict("sys.modules", {
+        "dashscope": mock_dashscope,
+        "dashscope.audio": MagicMock(),
+        "dashscope.audio.tts_v2": mock_tts_v2,
+    }):
         result = await provider.synthesize("hello", tmp_path / "out.mp3")
     assert result is False
 
@@ -46,12 +60,14 @@ async def test_cosyvoice_empty_audio_returns_false(tmp_path, monkeypatch):
 async def test_cosyvoice_happy_path(tmp_path, monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     provider = _provider()
-    mock_result = MagicMock()
-    mock_result.get_audio_data.return_value = b"fake-mp3-bytes"
-    mock_synthesizer = MagicMock()
-    mock_synthesizer.call.return_value = mock_result
+    mock_tts_v2, _ = _mock_tts_v2(b"fake-mp3-bytes")
+    mock_dashscope = MagicMock()
     out = tmp_path / "voice.mp3"
-    with patch.dict("sys.modules", {"dashscope": MagicMock(), "dashscope.audio": MagicMock(), "dashscope.audio.tts_v3": MagicMock(SpeechSynthesizer=mock_synthesizer)}):
+    with patch.dict("sys.modules", {
+        "dashscope": mock_dashscope,
+        "dashscope.audio": MagicMock(),
+        "dashscope.audio.tts_v2": mock_tts_v2,
+    }):
         result = await provider.synthesize("你好，世界", out)
     assert result is True
     assert out.exists()
@@ -83,24 +99,22 @@ def test_strip_tts_control_tags_preserves_normal_text():
 
 @pytest.mark.asyncio
 async def test_preamble_prepended_to_synthesize_text(tmp_path, monkeypatch):
-    """synthesize() must prepend preamble to the text passed to SpeechSynthesizer."""
+    """synthesize() must prepend preamble to the text passed to SpeechSynthesizer.call()."""
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     provider = CosyVoiceTTSProvider(
         TTSConfig(api_key="sk-test", voice="Asuka-Plus", model="cosyvoice-v3.5-plus",
                   preamble="式波明日香，傲娇直率，情绪外放。")
     )
-    mock_result = MagicMock()
-    mock_result.get_audio_data.return_value = b"fake"
-    mock_synthesizer = MagicMock()
-    mock_synthesizer.call.return_value = mock_result
-
+    mock_tts_v2, mock_instance = _mock_tts_v2(b"fake")
+    mock_dashscope = MagicMock()
     with patch.dict("sys.modules", {
-        "dashscope": MagicMock(), "dashscope.audio": MagicMock(),
-        "dashscope.audio.tts_v3": MagicMock(SpeechSynthesizer=mock_synthesizer),
+        "dashscope": mock_dashscope,
+        "dashscope.audio": MagicMock(),
+        "dashscope.audio.tts_v2": mock_tts_v2,
     }):
         await provider.synthesize("你好", tmp_path / "out.mp3")
 
-    called_text = mock_synthesizer.call.call_args.kwargs["text"]
+    called_text = mock_instance.call.call_args[0][0]
     assert "式波明日香，傲娇直率，情绪外放。" in called_text
     assert "你好" in called_text
 
@@ -113,19 +127,17 @@ async def test_preamble_injected_inside_speak_tag_for_ssml(tmp_path, monkeypatch
         TTSConfig(api_key="sk-test", voice="Asuka-Plus", model="cosyvoice-v3.5-plus",
                   preamble="式波明日香，傲娇直率，情绪外放。")
     )
-    mock_result = MagicMock()
-    mock_result.get_audio_data.return_value = b"fake"
-    mock_synthesizer = MagicMock()
-    mock_synthesizer.call.return_value = mock_result
-
+    mock_tts_v2, mock_instance = _mock_tts_v2(b"fake")
+    mock_dashscope = MagicMock()
     ssml = '<speak rate="0.8">你好世界</speak>'
     with patch.dict("sys.modules", {
-        "dashscope": MagicMock(), "dashscope.audio": MagicMock(),
-        "dashscope.audio.tts_v3": MagicMock(SpeechSynthesizer=mock_synthesizer),
+        "dashscope": mock_dashscope,
+        "dashscope.audio": MagicMock(),
+        "dashscope.audio.tts_v2": mock_tts_v2,
     }):
         await provider.synthesize(ssml, tmp_path / "out.mp3")
 
-    called_text = mock_synthesizer.call.call_args.kwargs["text"]
+    called_text = mock_instance.call.call_args[0][0]
     # preamble must be inside <speak>, not prepended outside
     assert called_text.startswith("<speak")
     assert "式波明日香，傲娇直率，情绪外放。" in called_text
@@ -136,8 +148,13 @@ async def test_preamble_injected_inside_speak_tag_for_ssml(tmp_path, monkeypatch
 async def test_cosyvoice_api_exception_returns_false(tmp_path, monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     provider = _provider()
-    mock_synthesizer = MagicMock()
-    mock_synthesizer.call.side_effect = RuntimeError("API error")
-    with patch.dict("sys.modules", {"dashscope": MagicMock(), "dashscope.audio": MagicMock(), "dashscope.audio.tts_v3": MagicMock(SpeechSynthesizer=mock_synthesizer)}):
+    mock_tts_v2, mock_instance = _mock_tts_v2()
+    mock_instance.call.side_effect = RuntimeError("API error")
+    mock_dashscope = MagicMock()
+    with patch.dict("sys.modules", {
+        "dashscope": mock_dashscope,
+        "dashscope.audio": MagicMock(),
+        "dashscope.audio.tts_v2": mock_tts_v2,
+    }):
         result = await provider.synthesize("hello", tmp_path / "out.mp3")
     assert result is False

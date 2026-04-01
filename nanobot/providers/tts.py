@@ -16,6 +16,15 @@ _SSML_WRAP_RE = re.compile(r'</?(?:speak|sub|phoneme|say-as)\b[^>]*>', re.IGNORE
 # Locate the closing `>` of an opening <speak ...> tag for preamble injection.
 _SPEAK_OPEN_RE = re.compile(r'(<speak\b[^>]*>)', re.IGNORECASE)
 
+# Map config format strings to dashscope AudioFormat enum names.
+# AudioFormat members follow the pattern <FORMAT>_<RATE>HZ_MONO_<BITRATE>.
+_FORMAT_TO_AUDIO_FORMAT = {
+    "mp3": "MP3_16000HZ_MONO_128KBPS",
+    "wav": "WAV_16000HZ_MONO_16BIT",
+    "pcm": "PCM_16000HZ_MONO_16BIT",
+}
+_DEFAULT_AUDIO_FORMAT = "MP3_16000HZ_MONO_128KBPS"
+
 
 def strip_tts_control_tags(text: str) -> str:
     """Remove CosyVoice SSML markup from text before sending as plain text.
@@ -32,8 +41,7 @@ class CosyVoiceTTSProvider:
     """
     TTS provider using Alibaba Cloud Bailian CosyVoice.
 
-    Synthesises text to MP3 audio via dashscope SpeechSynthesizer
-    (tts_v3 if available, falls back to tts for dashscope <1.26).
+    Synthesises text to audio via dashscope.audio.tts_v2.SpeechSynthesizer.
     Requires: pip install dashscope  (included in qwen3-asr extra)
     API key: https://dashscope.console.aliyun.com/
     """
@@ -53,15 +61,15 @@ class CosyVoiceTTSProvider:
             return False
 
         try:
-            try:
-                from dashscope.audio.tts_v3 import SpeechSynthesizer
-            except ImportError:
-                # dashscope <1.26 ships tts (v1) but not tts_v3; v1 accepts the
-                # same call signature via **kwargs and works with CosyVoice models.
-                from dashscope.audio.tts import SpeechSynthesizer  # type: ignore[no-redef]
+            import dashscope
+            from dashscope.audio.tts_v2 import AudioFormat, SpeechSynthesizer
         except ImportError:
             logger.error("dashscope not installed. Run: pip install dashscope")
             return False
+
+        fmt = (self.config.format or "").strip().lstrip(".").lower() or "mp3"
+        audio_format_name = _FORMAT_TO_AUDIO_FORMAT.get(fmt, _DEFAULT_AUDIO_FORMAT)
+        audio_format = getattr(AudioFormat, audio_format_name, AudioFormat.MP3_16000HZ_MONO_128KBPS)
 
         if self.config.preamble:
             if _SPEAK_OPEN_RE.search(text):
@@ -71,16 +79,16 @@ class CosyVoiceTTSProvider:
                 tts_text = self.config.preamble + text
         else:
             tts_text = text
+
         try:
-            result = await asyncio.to_thread(
-                SpeechSynthesizer.call,
+            dashscope.api_key = self.api_key
+            synthesizer = SpeechSynthesizer(
                 model=self.config.model,
-                text=tts_text,
                 voice=self.config.voice,
-                format=(self.config.format or "").strip().lstrip(".").lower() or "mp3",
-                api_key=self.api_key,
+                format=audio_format,
+                callback=None,
             )
-            audio_data = result.get_audio_data()
+            audio_data: bytes = await asyncio.to_thread(synthesizer.call, tts_text)
             if not audio_data:
                 logger.warning("TTS: CosyVoice returned empty audio for tts_text length={}", len(tts_text))
                 return False
