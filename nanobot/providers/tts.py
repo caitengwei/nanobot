@@ -9,19 +9,23 @@ from loguru import logger
 
 from nanobot.config.schema import TTSConfig
 
-# Matches CosyVoice inline control tags:
-#   <|tag|>value   e.g. <|speaking_rate|>slow, <|emotion|>happy, <|volume|>high
-#   </|tag|>       closing variant e.g. </|strong|>
-#   [marker]       paralinguistic e.g. [laughter], [breath]
-_TTS_CONTROL_TAG_RE = re.compile(
-    r"</??\|[^|>]+\|>(?:\s*[a-zA-Z][a-zA-Z_]*)?"  # <|tag|> or </|tag|> + optional ASCII value
-    r"|\[[a-zA-Z][a-zA-Z_]*\]"                      # [marker] paralinguistic tags
-)
+# CosyVoice SSML void tags: these produce no spoken text — remove entirely.
+_SSML_VOID_RE = re.compile(r'<(?:break|soundEvent)\b[^>]*/>')
+# CosyVoice SSML wrapping tags: strip tags but keep inner text.
+_SSML_WRAP_RE = re.compile(r'</?(?:speak|sub|phoneme|say-as)\b[^>]*>')
+# Locate the closing `>` of an opening <speak ...> tag for preamble injection.
+_SPEAK_OPEN_RE = re.compile(r'(<speak\b[^>]*>)', re.IGNORECASE)
 
 
 def strip_tts_control_tags(text: str) -> str:
-    """Remove CosyVoice control tags from text before sending as plain text."""
-    return _TTS_CONTROL_TAG_RE.sub("", text).strip()
+    """Remove CosyVoice SSML markup from text before sending as plain text.
+
+    Void tags (break, soundEvent) are removed entirely.
+    Wrapping tags (speak, phoneme, sub, say-as) are removed but their content is kept.
+    """
+    text = _SSML_VOID_RE.sub("", text)
+    text = _SSML_WRAP_RE.sub("", text)
+    return text.strip()
 
 
 class CosyVoiceTTSProvider:
@@ -53,7 +57,14 @@ class CosyVoiceTTSProvider:
             logger.error("dashscope not installed. Run: pip install dashscope")
             return False
 
-        tts_text = f"{self.config.preamble}{text}" if self.config.preamble else text
+        if self.config.preamble:
+            if _SPEAK_OPEN_RE.search(text):
+                # SSML: inject preamble immediately after the opening <speak ...> tag
+                tts_text = _SPEAK_OPEN_RE.sub(r'\1' + self.config.preamble, text, count=1)
+            else:
+                tts_text = self.config.preamble + text
+        else:
+            tts_text = text
         try:
             result = await asyncio.to_thread(
                 SpeechSynthesizer.call,

@@ -150,7 +150,7 @@ async def test_text_stripped_of_control_tags_before_sending():
     ch._send_media_file = AsyncMock()
     ch._send_text = fake_send_text  # type: ignore
 
-    raw = "<|speaking_rate|>slow你好[laughter]，<|emotion|>happy今天天气真好！"
+    raw = '<speak rate="0.8">你好<break time="500ms"/>，今天天气真好！</speak>'
     msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=raw)
     await ch.send(msg)
 
@@ -158,8 +158,8 @@ async def test_text_stripped_of_control_tags_before_sending():
 
 
 @pytest.mark.asyncio
-async def test_tts_receives_unstripped_text_with_control_tags():
-    """TTS synthesize() must receive the original text including control tags."""
+async def test_tts_receives_unstripped_ssml():
+    """TTS synthesize() must receive the original SSML text including all tags."""
     ch = _make_channel(tts_api_key="sk-test")
     ch._token = "tok"
     ch._context_tokens = {"wx-user": "ctx-1"}
@@ -178,13 +178,13 @@ async def test_tts_receives_unstripped_text_with_control_tags():
     ch._send_media_file = AsyncMock()
     ch._send_text = AsyncMock()
 
-    raw = "<|speaking_rate|>slow你好[laughter]"
+    raw = '<speak rate="0.8">你好<break time="500ms"/></speak>'
     msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=raw)
     await ch.send(msg)
 
     assert len(received_text) == 1
-    assert "<|speaking_rate|>slow" in received_text[0]
-    assert "[laughter]" in received_text[0]
+    assert '<speak' in received_text[0]
+    assert '<break' in received_text[0]
 
 
 @pytest.mark.asyncio

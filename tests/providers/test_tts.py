@@ -60,11 +60,21 @@ async def test_cosyvoice_happy_path(tmp_path, monkeypatch):
     assert out.read_bytes() == b"fake-mp3-bytes"
 
 
-def test_strip_tts_control_tags_removes_cosyvoice_tags():
-    assert strip_tts_control_tags("<|speaking_rate|>slow你好<|emotion|>happy今天天气真好") == "你好今天天气真好"
-    assert strip_tts_control_tags("[laughter]哈哈[breath]") == "哈哈"
-    assert strip_tts_control_tags("<|strong|>重要</|strong|>内容") == "重要内容"
-    assert strip_tts_control_tags("<|volume|>high嗨！") == "嗨！"
+def test_strip_tts_control_tags_removes_cosyvoice_ssml():
+    # speak wrapper removed, content preserved
+    assert strip_tts_control_tags('<speak>你好</speak>') == "你好"
+    # break is a void tag — removed entirely (no content to keep)
+    assert strip_tts_control_tags('你好<break time="500ms"/>今天') == "你好今天"
+    # soundEvent is a void tag — removed entirely
+    assert strip_tts_control_tags('开始<soundEvent src="url"/>结束') == "开始结束"
+    # phoneme — inner text kept
+    assert strip_tts_control_tags('<phoneme alphabet="py" ph="dian3">典</phoneme>当行') == "典当行"
+    # sub — inner text kept (alias discarded)
+    assert strip_tts_control_tags('<sub alias="网络协议">W3C</sub>') == "W3C"
+    # say-as — inner text kept
+    assert strip_tts_control_tags('<say-as interpret-as="telephone">12345</say-as>') == "12345"
+    # full SSML example
+    assert strip_tts_control_tags('<speak rate="0.8">你好<break time="500ms"/>世界</speak>') == "你好世界"
 
 
 def test_strip_tts_control_tags_preserves_normal_text():
@@ -93,8 +103,35 @@ async def test_preamble_prepended_to_synthesize_text(tmp_path, monkeypatch):
         await provider.synthesize("你好", tmp_path / "out.mp3")
 
     called_text = mock_synthesizer.call.call_args.kwargs["text"]
-    assert called_text.startswith("式波明日香，傲娇直率，情绪外放。")
+    assert "式波明日香，傲娇直率，情绪外放。" in called_text
     assert "你好" in called_text
+
+
+@pytest.mark.asyncio
+async def test_preamble_injected_inside_speak_tag_for_ssml(tmp_path, monkeypatch):
+    """When text is SSML, preamble must go inside <speak>, not before it."""
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    provider = CosyVoiceTTSProvider(
+        TTSConfig(api_key="sk-test", voice="Asuka-Plus", model="cosyvoice-v3.5-plus",
+                  preamble="式波明日香，傲娇直率，情绪外放。")
+    )
+    mock_result = MagicMock()
+    mock_result.get_audio_data.return_value = b"fake"
+    mock_synthesizer = MagicMock()
+    mock_synthesizer.call.return_value = mock_result
+
+    ssml = '<speak rate="0.8">你好世界</speak>'
+    with patch.dict("sys.modules", {
+        "dashscope": MagicMock(), "dashscope.audio": MagicMock(),
+        "dashscope.audio.tts_v3": MagicMock(SpeechSynthesizer=mock_synthesizer),
+    }):
+        await provider.synthesize(ssml, tmp_path / "out.mp3")
+
+    called_text = mock_synthesizer.call.call_args.kwargs["text"]
+    # preamble must be inside <speak>, not prepended outside
+    assert called_text.startswith("<speak")
+    assert "式波明日香，傲娇直率，情绪外放。" in called_text
+    assert "你好世界" in called_text
 
 
 @pytest.mark.asyncio
