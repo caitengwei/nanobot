@@ -32,7 +32,8 @@ class CosyVoiceTTSProvider:
     """
     TTS provider using Alibaba Cloud Bailian CosyVoice.
 
-    Synthesises text to MP3 audio via dashscope.audio.tts_v3.SpeechSynthesizer.
+    Synthesises text to MP3 audio via dashscope SpeechSynthesizer
+    (tts_v3 if available, falls back to tts for dashscope <1.26).
     Requires: pip install dashscope  (included in qwen3-asr extra)
     API key: https://dashscope.console.aliyun.com/
     """
@@ -52,7 +53,12 @@ class CosyVoiceTTSProvider:
             return False
 
         try:
-            from dashscope.audio.tts_v3 import SpeechSynthesizer
+            try:
+                from dashscope.audio.tts_v3 import SpeechSynthesizer
+            except ImportError:
+                # dashscope <1.26 ships tts (v1) but not tts_v3; v1 accepts the
+                # same call signature via **kwargs and works with CosyVoice models.
+                from dashscope.audio.tts import SpeechSynthesizer  # type: ignore[no-redef]
         except ImportError:
             logger.error("dashscope not installed. Run: pip install dashscope")
             return False
