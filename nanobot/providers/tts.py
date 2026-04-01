@@ -13,8 +13,6 @@ from nanobot.config.schema import TTSConfig
 _SSML_VOID_RE = re.compile(r'<(?:break|soundEvent)\b[^>]*/>', re.IGNORECASE)
 # CosyVoice SSML wrapping tags: strip tags but keep inner text.
 _SSML_WRAP_RE = re.compile(r'</?(?:speak|sub|phoneme|say-as)\b[^>]*>', re.IGNORECASE)
-# Locate the closing `>` of an opening <speak ...> tag for preamble injection.
-_SPEAK_OPEN_RE = re.compile(r'(<speak\b[^>]*>)', re.IGNORECASE)
 
 # Map config format strings to dashscope AudioFormat enum names.
 # AudioFormat members follow the pattern <FORMAT>_<RATE>HZ_MONO_<BITRATE>.
@@ -71,26 +69,18 @@ class CosyVoiceTTSProvider:
         audio_format_name = _FORMAT_TO_AUDIO_FORMAT.get(fmt, _DEFAULT_AUDIO_FORMAT)
         audio_format = getattr(AudioFormat, audio_format_name, AudioFormat.MP3_16000HZ_MONO_128KBPS)
 
-        if self.config.preamble:
-            if _SPEAK_OPEN_RE.search(text):
-                # SSML: inject preamble immediately after the opening <speak ...> tag
-                tts_text = _SPEAK_OPEN_RE.sub(lambda m: m.group(1) + self.config.preamble, text, count=1)
-            else:
-                tts_text = self.config.preamble + text
-        else:
-            tts_text = text
-
         try:
             dashscope.api_key = self.api_key
             synthesizer = SpeechSynthesizer(
                 model=self.config.model,
                 voice=self.config.voice,
                 format=audio_format,
+                instruction=self.config.preamble or None,
                 callback=None,
             )
-            audio_data: bytes = await asyncio.to_thread(synthesizer.call, tts_text)
+            audio_data: bytes = await asyncio.to_thread(synthesizer.call, text)
             if not audio_data:
-                logger.warning("TTS: CosyVoice returned empty audio for tts_text length={}", len(tts_text))
+                logger.warning("TTS: CosyVoice returned empty audio for text length={}", len(text))
                 return False
             Path(output_path).write_bytes(audio_data)
             logger.debug("TTS: synthesised {} bytes → {}", len(audio_data), output_path)

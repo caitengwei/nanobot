@@ -98,12 +98,13 @@ def test_strip_tts_control_tags_preserves_normal_text():
 
 
 @pytest.mark.asyncio
-async def test_preamble_prepended_to_synthesize_text(tmp_path, monkeypatch):
-    """synthesize() must prepend preamble to the text passed to SpeechSynthesizer.call()."""
+async def test_preamble_passed_as_instruction_to_synthesizer(tmp_path, monkeypatch):
+    """synthesize() must pass preamble as instruction= kwarg to SpeechSynthesizer, not in call()."""
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    preamble = "式波明日香，傲娇直率，情绪外放。"
     provider = CosyVoiceTTSProvider(
         TTSConfig(api_key="sk-test", voice="Asuka-Plus", model="cosyvoice-v3.5-plus",
-                  preamble="式波明日香，傲娇直率，情绪外放。")
+                  preamble=preamble)
     )
     mock_tts_v2, mock_instance = _mock_tts_v2(b"fake")
     mock_dashscope = MagicMock()
@@ -114,18 +115,21 @@ async def test_preamble_prepended_to_synthesize_text(tmp_path, monkeypatch):
     }):
         await provider.synthesize("你好", tmp_path / "out.mp3")
 
-    called_text = mock_instance.call.call_args[0][0]
-    assert "式波明日香，傲娇直率，情绪外放。" in called_text
-    assert "你好" in called_text
+    # preamble goes to instruction= on the constructor, not in call()
+    init_kwargs = mock_tts_v2.SpeechSynthesizer.call_args[1]
+    assert init_kwargs.get("instruction") == preamble
+    # synthesizer.call() receives only the original text, no preamble prepended
+    assert mock_instance.call.call_args[0][0] == "你好"
 
 
 @pytest.mark.asyncio
-async def test_preamble_injected_inside_speak_tag_for_ssml(tmp_path, monkeypatch):
-    """When text is SSML, preamble must go inside <speak>, not before it."""
+async def test_preamble_instruction_not_in_call_text_for_ssml(tmp_path, monkeypatch):
+    """When text is SSML, preamble still goes to instruction=, not into the SSML string."""
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    preamble = "式波明日香，傲娇直率，情绪外放。"
     provider = CosyVoiceTTSProvider(
         TTSConfig(api_key="sk-test", voice="Asuka-Plus", model="cosyvoice-v3.5-plus",
-                  preamble="式波明日香，傲娇直率，情绪外放。")
+                  preamble=preamble)
     )
     mock_tts_v2, mock_instance = _mock_tts_v2(b"fake")
     mock_dashscope = MagicMock()
@@ -137,11 +141,10 @@ async def test_preamble_injected_inside_speak_tag_for_ssml(tmp_path, monkeypatch
     }):
         await provider.synthesize(ssml, tmp_path / "out.mp3")
 
-    called_text = mock_instance.call.call_args[0][0]
-    # preamble must be inside <speak>, not prepended outside
-    assert called_text.startswith("<speak")
-    assert "式波明日香，傲娇直率，情绪外放。" in called_text
-    assert "你好世界" in called_text
+    init_kwargs = mock_tts_v2.SpeechSynthesizer.call_args[1]
+    assert init_kwargs.get("instruction") == preamble
+    # SSML passed unchanged to call()
+    assert mock_instance.call.call_args[0][0] == ssml
 
 
 @pytest.mark.asyncio
