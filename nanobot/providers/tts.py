@@ -10,9 +10,9 @@ from loguru import logger
 from nanobot.config.schema import TTSConfig
 
 # CosyVoice SSML void tags: these produce no spoken text — remove entirely.
-_SSML_VOID_RE = re.compile(r'<(?:break|soundEvent)\b[^>]*/>')
+_SSML_VOID_RE = re.compile(r'<(?:break|soundEvent)\b[^>]*/>', re.IGNORECASE)
 # CosyVoice SSML wrapping tags: strip tags but keep inner text.
-_SSML_WRAP_RE = re.compile(r'</?(?:speak|sub|phoneme|say-as)\b[^>]*>')
+_SSML_WRAP_RE = re.compile(r'</?(?:speak|sub|phoneme|say-as)\b[^>]*>', re.IGNORECASE)
 # Locate the closing `>` of an opening <speak ...> tag for preamble injection.
 _SPEAK_OPEN_RE = re.compile(r'(<speak\b[^>]*>)', re.IGNORECASE)
 
@@ -60,7 +60,7 @@ class CosyVoiceTTSProvider:
         if self.config.preamble:
             if _SPEAK_OPEN_RE.search(text):
                 # SSML: inject preamble immediately after the opening <speak ...> tag
-                tts_text = _SPEAK_OPEN_RE.sub(r'\1' + self.config.preamble, text, count=1)
+                tts_text = _SPEAK_OPEN_RE.sub(lambda m: m.group(1) + self.config.preamble, text, count=1)
             else:
                 tts_text = self.config.preamble + text
         else:

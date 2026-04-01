@@ -644,6 +644,9 @@ class WeixinChannel(BaseChannel):
         if not content:
             return
 
+        if self._wants_voice(content):
+            self._voice_sessions[from_user_id] = True
+
         logger.info(
             "WeChat inbound: from={} items={} bodyLen={}",
             from_user_id,

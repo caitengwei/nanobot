@@ -1,7 +1,7 @@
 """Tests for WeChat TTS voice message integration."""
 
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -48,14 +48,19 @@ def test_voice_sessions_initialised_empty():
 
 @pytest.mark.asyncio
 async def test_inbound_voice_trigger_sets_session_flag():
-    """After processing a message with a voice trigger, _voice_sessions is marked."""
+    """_process_message() must set _voice_sessions when content matches trigger."""
     ch = _make_channel()
     ch._token = "tok"
-    ch._context_tokens = {"wx-user": "ctx-1"}
 
-    text = "你说，帮我分析一下"
-    if ch._wants_voice(text):
-        ch._voice_sessions["wx-user"] = True
+    await ch._process_message({
+        "message_type": 1,
+        "message_id": "m-voice-1",
+        "from_user_id": "wx-user",
+        "context_token": "ctx-1",
+        "item_list": [
+            {"type": 1, "text_item": {"text": "你说，帮我分析一下"}},
+        ],
+    })
 
     assert ch._voice_sessions.get("wx-user") is True
 
