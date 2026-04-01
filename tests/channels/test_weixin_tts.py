@@ -127,6 +127,67 @@ async def test_send_text_still_sent_when_tts_fails(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_text_stripped_of_control_tags_before_sending():
+    """Text sent to WeChat must have CosyVoice control tags stripped."""
+    ch = _make_channel(tts_api_key="sk-test")
+    ch._token = "tok"
+    ch._context_tokens = {"wx-user": "ctx-1"}
+    ch._voice_sessions["wx-user"] = True
+    ch._client = MagicMock()
+
+    async def fake_synthesize(text, output_path) -> bool:
+        from pathlib import Path
+        Path(output_path).write_bytes(b"fake-mp3")
+        return True
+
+    ch._tts_provider.synthesize = fake_synthesize  # type: ignore
+
+    sent_text = []
+
+    async def fake_send_text(to, text, ctx):
+        sent_text.append(text)
+
+    ch._send_media_file = AsyncMock()
+    ch._send_text = fake_send_text  # type: ignore
+
+    raw = "<|speaking_rate|>slow你好[laughter]，<|emotion|>happy今天天气真好！"
+    msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=raw)
+    await ch.send(msg)
+
+    assert sent_text == ["你好，今天天气真好！"]
+
+
+@pytest.mark.asyncio
+async def test_tts_receives_unstripped_text_with_control_tags():
+    """TTS synthesize() must receive the original text including control tags."""
+    ch = _make_channel(tts_api_key="sk-test")
+    ch._token = "tok"
+    ch._context_tokens = {"wx-user": "ctx-1"}
+    ch._voice_sessions["wx-user"] = True
+    ch._client = MagicMock()
+
+    received_text: list[str] = []
+
+    async def capturing_synthesize(text, output_path) -> bool:
+        received_text.append(text)
+        from pathlib import Path
+        Path(output_path).write_bytes(b"fake-mp3")
+        return True
+
+    ch._tts_provider.synthesize = capturing_synthesize  # type: ignore
+    ch._send_media_file = AsyncMock()
+    ch._send_text = AsyncMock()
+
+    raw = "<|speaking_rate|>slow你好[laughter]"
+    msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=raw)
+    await ch.send(msg)
+
+    assert len(received_text) == 1
+    assert "<|speaking_rate|>slow" in received_text[0]
+    assert "[laughter]" in received_text[0]
+
+
+@pytest.mark.asyncio
 async def test_send_skips_tts_when_no_provider():
     """If _tts_provider is None (no api_key), send() skips TTS silently."""
     ch = _make_channel(tts_api_key="")

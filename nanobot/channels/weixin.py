@@ -133,7 +133,8 @@ class WeixinChannel(BaseChannel):
         self._next_poll_timeout_s: int = DEFAULT_LONG_POLL_TIMEOUT_S
         self._session_pause_until: float = 0.0
         self._voice_sessions: dict[str, bool] = {}
-        from nanobot.providers.tts import CosyVoiceTTSProvider
+        from nanobot.providers.tts import CosyVoiceTTSProvider, strip_tts_control_tags
+        self._strip_tts_tags = strip_tts_control_tags
         self._tts_provider: CosyVoiceTTSProvider | None = (
             CosyVoiceTTSProvider(self.config.tts)
             if (self.config.tts.api_key or os.environ.get("DASHSCOPE_API_KEY"))
@@ -776,12 +777,13 @@ class WeixinChannel(BaseChannel):
                     msg.chat_id, f"[Failed to send: {filename}]", ctx_token,
                 )
 
-        # --- Send text content ---
-        if not content:
+        # --- Send text content (control tags stripped for plain text) ---
+        text_content = self._strip_tts_tags(content)
+        if not text_content:
             return
 
         try:
-            chunks = split_message(content, WEIXIN_MAX_MESSAGE_LEN)
+            chunks = split_message(text_content, WEIXIN_MAX_MESSAGE_LEN)
             for chunk in chunks:
                 await self._send_text(msg.chat_id, chunk, ctx_token)
         except Exception as e:

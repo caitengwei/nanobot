@@ -2,11 +2,26 @@
 
 import asyncio
 import os
+import re
 from pathlib import Path
 
 from loguru import logger
 
 from nanobot.config.schema import TTSConfig
+
+# Matches CosyVoice inline control tags:
+#   <|tag|>value   e.g. <|speaking_rate|>slow, <|emotion|>happy, <|volume|>high
+#   </|tag|>       closing variant e.g. </|strong|>
+#   [marker]       paralinguistic e.g. [laughter], [breath]
+_TTS_CONTROL_TAG_RE = re.compile(
+    r"</??\|[^|>]+\|>(?:\s*[a-zA-Z][a-zA-Z_]*)?"  # <|tag|> or </|tag|> + optional ASCII value
+    r"|\[[a-zA-Z][a-zA-Z_]*\]"                      # [marker] paralinguistic tags
+)
+
+
+def strip_tts_control_tags(text: str) -> str:
+    """Remove CosyVoice control tags from text before sending as plain text."""
+    return _TTS_CONTROL_TAG_RE.sub("", text).strip()
 
 
 class CosyVoiceTTSProvider:
@@ -38,11 +53,12 @@ class CosyVoiceTTSProvider:
             logger.error("dashscope not installed. Run: pip install dashscope")
             return False
 
+        tts_text = f"{self.config.preamble}{text}" if self.config.preamble else text
         try:
             result = await asyncio.to_thread(
                 SpeechSynthesizer.call,
                 model=self.config.model,
-                text=text,
+                text=tts_text,
                 voice=self.config.voice,
                 format=self.config.format,
                 api_key=self.api_key,
