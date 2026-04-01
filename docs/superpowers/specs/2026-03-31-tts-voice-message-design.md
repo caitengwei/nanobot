@@ -199,24 +199,33 @@ TTS failure is always non-fatal. Text response is guaranteed.
 
 ## Testing
 
-**`tests/providers/test_tts.py`** (5 tests)
+**`tests/providers/test_tts.py`** (9 tests)
 
 1. `test_cosyvoice_no_api_key_returns_false`
 2. `test_cosyvoice_import_error_returns_false`
 3. `test_cosyvoice_empty_audio_returns_false`
 4. `test_cosyvoice_happy_path` — verifies file written, returns True
 5. `test_cosyvoice_api_exception_returns_false`
+6. `test_strip_tts_control_tags_removes_cosyvoice_ssml`
+7. `test_strip_tts_control_tags_preserves_normal_text`
+8. `test_preamble_prepended_to_synthesize_text`
+9. `test_preamble_injected_inside_speak_tag_for_ssml`
 
-**`tests/channels/test_weixin_tts.py`** (5 tests)
+**`tests/channels/test_weixin_tts.py`** (10 tests)
 
-6. `test_wants_voice_triggers_on_keywords`
-7. `test_wants_voice_no_trigger_on_normal_text`
-8. `test_inbound_voice_trigger_sets_session_flag`
-9. `test_send_calls_tts_when_session_flagged`
-10. `test_send_text_still_sent_when_tts_fails`
+10. `test_wants_voice_triggers_on_keywords`
+11. `test_wants_voice_no_trigger_on_normal_text`
+12. `test_voice_sessions_initialised_empty`
+13. `test_inbound_voice_trigger_sets_session_flag`
+14. `test_send_calls_tts_and_sends_voice_when_session_flagged`
+15. `test_send_text_still_sent_when_tts_fails`
+16. `test_text_stripped_of_control_tags_when_voice_triggered`
+17. `test_text_not_stripped_when_no_voice_trigger`
+18. `test_tts_receives_unstripped_ssml`
+19. `test_send_skips_tts_when_no_provider`
 
 ---
 
-## Open Question
+## Notes
 
-`UPLOAD_MEDIA_VOICE` constant value needs to be confirmed against the WeChat ilink bot API docs before implementation. If WeChat does not accept MP3 via `ITEM_VOICE`, fallback is `ITEM_FILE` with MP3 (degrades gracefully, no code-path change needed).
+`UPLOAD_MEDIA_VOICE = 4` confirmed via epiral/weixin-bot protocol reference. `ITEM_VOICE = 3` is the outbound item type; upload media_type `4` is the corresponding upload endpoint value.
