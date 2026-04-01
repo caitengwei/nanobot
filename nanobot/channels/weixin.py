@@ -756,7 +756,8 @@ class WeixinChannel(BaseChannel):
 
         # --- TTS voice message (before text, matching media-first pattern) ---
         if wants_voice and content and self._tts_provider:
-            with tempfile.NamedTemporaryFile(suffix=".mp3", prefix="nanobot-tts-", delete=False) as tf:
+            tts_suffix = f".{self.config.tts.format}"
+            with tempfile.NamedTemporaryFile(suffix=tts_suffix, prefix="nanobot-tts-", delete=False) as tf:
                 tmp = Path(tf.name)
             try:
                 ok = await self._tts_provider.synthesize(content, tmp)
