@@ -780,8 +780,8 @@ class WeixinChannel(BaseChannel):
                     msg.chat_id, f"[Failed to send: {filename}]", ctx_token,
                 )
 
-        # --- Send text content (control tags stripped for plain text) ---
-        text_content = self._strip_tts_tags(content)
+        # --- Send text content (strip SSML only when voice was triggered) ---
+        text_content = self._strip_tts_tags(content) if wants_voice else content
         if not text_content:
             return
 

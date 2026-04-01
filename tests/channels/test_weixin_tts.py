@@ -132,8 +132,8 @@ async def test_send_text_still_sent_when_tts_fails(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_text_stripped_of_control_tags_before_sending():
-    """Text sent to WeChat must have CosyVoice control tags stripped."""
+async def test_text_stripped_of_control_tags_when_voice_triggered():
+    """SSML tags stripped from text only when voice was triggered."""
     ch = _make_channel(tts_api_key="sk-test")
     ch._token = "tok"
     ch._context_tokens = {"wx-user": "ctx-1"}
@@ -160,6 +160,29 @@ async def test_text_stripped_of_control_tags_before_sending():
     await ch.send(msg)
 
     assert sent_text == ["你好，今天天气真好！"]
+
+
+@pytest.mark.asyncio
+async def test_text_not_stripped_when_no_voice_trigger():
+    """SSML tags are NOT stripped from text when voice was not triggered."""
+    ch = _make_channel(tts_api_key="sk-test")
+    ch._token = "tok"
+    ch._context_tokens = {"wx-user": "ctx-1"}
+    ch._client = MagicMock()
+
+    sent_text = []
+
+    async def fake_send_text(to, text, ctx):
+        sent_text.append(text)
+
+    ch._send_media_file = AsyncMock()
+    ch._send_text = fake_send_text  # type: ignore
+
+    raw = '用 `<speak rate="0.9">` 标签控制语速'
+    msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=raw)
+    await ch.send(msg)
+
+    assert sent_text == [raw]
 
 
 @pytest.mark.asyncio
