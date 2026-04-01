@@ -18,7 +18,7 @@ def _make_channel(tts_api_key: str = "") -> WeixinChannel:
             enabled=True,
             allow_from=["*"],
             state_dir=tempfile.mkdtemp(prefix="nanobot-weixin-tts-test-"),
-            tts=TTSConfig(api_key=tts_api_key, voice="Asuka-Plus", model="cosyvoice-v2-plus"),
+            tts=TTSConfig(api_key=tts_api_key, voice="Asuka-Plus", model="cosyvoice-v3.5-plus"),
         ),
         bus,
     )

@@ -9,7 +9,7 @@ from nanobot.providers.tts import CosyVoiceTTSProvider, strip_tts_control_tags
 
 
 def _provider(api_key: str = "sk-test") -> CosyVoiceTTSProvider:
-    return CosyVoiceTTSProvider(TTSConfig(api_key=api_key, voice="Asuka-Plus", model="cosyvoice-v2-plus"))
+    return CosyVoiceTTSProvider(TTSConfig(api_key=api_key, voice="Asuka-Plus", model="cosyvoice-v3.5-plus"))
 
 
 @pytest.mark.asyncio

@@ -137,7 +137,7 @@ class WeixinChannel(BaseChannel):
         self._strip_tts_tags = strip_tts_control_tags
         if self.config.tts.provider != "cosyvoice":
             logger.warning(
-                "WeChat TTS: provider '{}' is not supported; only 'cosyvoice' is implemented",
+                "WeChat TTS: provider '{}' is not implemented; falling back to CosyVoice",
                 self.config.tts.provider,
             )
         self._tts_provider: CosyVoiceTTSProvider | None = (
@@ -762,7 +762,8 @@ class WeixinChannel(BaseChannel):
 
         # --- TTS voice message (before text, matching media-first pattern) ---
         if wants_voice and content and self._tts_provider:
-            tts_suffix = "." + self.config.tts.format.lstrip(".")
+            _fmt = (self.config.tts.format or "").strip().lstrip(".").lower()
+            tts_suffix = "." + (_fmt or "mp3")
             with tempfile.NamedTemporaryFile(suffix=tts_suffix, prefix="nanobot-tts-", delete=False) as tf:
                 tmp = Path(tf.name)
             try:
