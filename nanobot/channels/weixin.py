@@ -13,9 +13,9 @@ import asyncio
 import base64
 import hashlib
 import json
-import mimetypes
 import os
 import re
+import tempfile
 import time
 import uuid
 from collections import OrderedDict
@@ -31,7 +31,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.paths import get_media_dir, get_runtime_subdir
-from nanobot.config.schema import Base
+from nanobot.config.schema import Base, TTSConfig
 from nanobot.utils.helpers import split_message
 
 # ---------------------------------------------------------------------------
@@ -69,14 +69,21 @@ MAX_QR_REFRESH_COUNT = 3
 # Default long-poll timeout; overridden by server via longpolling_timeout_ms.
 DEFAULT_LONG_POLL_TIMEOUT_S = 35
 
-# Media-type codes for getuploadurl  (1=image, 2=video, 3=file)
+# Media-type codes for getuploadurl  (1=image, 2=video, 3=file, 4=voice)
 UPLOAD_MEDIA_IMAGE = 1
 UPLOAD_MEDIA_VIDEO = 2
 UPLOAD_MEDIA_FILE = 3
+UPLOAD_MEDIA_VOICE = 4
 
-# File extensions considered as images / videos for outbound media
+# File extensions considered as images / videos / voices for outbound media
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg"}
 _VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}
+_VOICE_EXTS = {".mp3", ".ogg", ".wav", ".m4a"}
+
+# Voice trigger patterns — user requests a spoken reply
+_VOICE_TRIGGER_PATTERNS = re.compile(
+    r"(你说|你来说|说给我听|用语音(说|回答|回复)|语音回复)"
+)
 
 
 class WeixinConfig(Base):
@@ -90,6 +97,7 @@ class WeixinConfig(Base):
     token: str = ""  # Manually set token, or obtained via QR login
     state_dir: str = ""  # Default: ~/.nanobot/weixin/
     poll_timeout: int = DEFAULT_LONG_POLL_TIMEOUT_S  # seconds for long-poll
+    tts: TTSConfig = Field(default_factory=TTSConfig)
 
 
 class WeixinChannel(BaseChannel):
@@ -124,6 +132,19 @@ class WeixinChannel(BaseChannel):
         self._poll_task: asyncio.Task | None = None
         self._next_poll_timeout_s: int = DEFAULT_LONG_POLL_TIMEOUT_S
         self._session_pause_until: float = 0.0
+        self._voice_sessions: dict[str, bool] = {}
+        from nanobot.providers.tts import CosyVoiceTTSProvider, strip_tts_control_tags
+        self._strip_tts_tags = strip_tts_control_tags
+        if self.config.tts.provider.strip().lower() != "cosyvoice":
+            logger.warning(
+                "WeChat TTS: provider '{}' is not implemented; falling back to CosyVoice",
+                self.config.tts.provider,
+            )
+        self._tts_provider: CosyVoiceTTSProvider | None = (
+            CosyVoiceTTSProvider(self.config.tts)
+            if (self.config.tts.api_key or os.environ.get("DASHSCOPE_API_KEY"))
+            else None
+        )
 
     # ------------------------------------------------------------------
     # State persistence
@@ -139,6 +160,10 @@ class WeixinChannel(BaseChannel):
         d.mkdir(parents=True, exist_ok=True)
         self._state_dir = d
         return d
+
+    def _wants_voice(self, content: str) -> bool:
+        """Return True if the message contains a voice-reply trigger phrase."""
+        return bool(_VOICE_TRIGGER_PATTERNS.search(content))
 
     def _load_state(self) -> bool:
         """Load saved account state. Returns True if a valid token was found."""
@@ -624,6 +649,9 @@ class WeixinChannel(BaseChannel):
         if not content:
             return
 
+        if self._wants_voice(content):
+            self._voice_sessions[from_user_id] = True
+
         logger.info(
             "WeChat inbound: from={} items={} bodyLen={}",
             from_user_id,
@@ -720,6 +748,9 @@ class WeixinChannel(BaseChannel):
             logger.warning("WeChat send blocked: {}", e)
             return
 
+        # Pop voice session flag early so it is always cleared, even on early return.
+        wants_voice = self._voice_sessions.pop(msg.chat_id, False)
+
         content = msg.content.strip()
         ctx_token = self._context_tokens.get(msg.chat_id, "")
         if not ctx_token:
@@ -728,6 +759,22 @@ class WeixinChannel(BaseChannel):
                 msg.chat_id,
             )
             return
+
+        # --- TTS voice message (before text, matching media-first pattern) ---
+        if wants_voice and content and self._tts_provider:
+            _fmt = (self.config.tts.format or "").strip().lstrip(".").lower()
+            tts_suffix = "." + (_fmt or "mp3")
+            with tempfile.NamedTemporaryFile(suffix=tts_suffix, prefix="nanobot-tts-", delete=False) as tf:
+                tmp = Path(tf.name)
+            try:
+                ok = await self._tts_provider.synthesize(content, tmp)
+                if ok:
+                    try:
+                        await self._send_media_file(msg.chat_id, str(tmp), ctx_token)
+                    except Exception as e:
+                        logger.error("Failed to send WeChat TTS voice: {}", e)
+            finally:
+                tmp.unlink(missing_ok=True)
 
         # --- Send media files first (following Telegram channel pattern) ---
         for media_path in (msg.media or []):
@@ -741,12 +788,13 @@ class WeixinChannel(BaseChannel):
                     msg.chat_id, f"[Failed to send: {filename}]", ctx_token,
                 )
 
-        # --- Send text content ---
-        if not content:
+        # --- Send text content (strip SSML only when voice was triggered) ---
+        text_content = self._strip_tts_tags(content) if wants_voice else content
+        if not text_content:
             return
 
         try:
-            chunks = split_message(content, WEIXIN_MAX_MESSAGE_LEN)
+            chunks = split_message(text_content, WEIXIN_MAX_MESSAGE_LEN)
             for chunk in chunks:
                 await self._send_text(msg.chat_id, chunk, ctx_token)
         except Exception as e:
@@ -825,6 +873,10 @@ class WeixinChannel(BaseChannel):
             upload_type = UPLOAD_MEDIA_VIDEO
             item_type = ITEM_VIDEO
             item_key = "video_item"
+        elif ext in _VOICE_EXTS:
+            upload_type = UPLOAD_MEDIA_VOICE
+            item_type = ITEM_VOICE
+            item_key = "voice_item"
         else:
             upload_type = UPLOAD_MEDIA_FILE
             item_type = ITEM_FILE
@@ -903,6 +955,8 @@ class WeixinChannel(BaseChannel):
             media_item["mid_size"] = padded_size
         elif item_type == ITEM_VIDEO:
             media_item["video_size"] = padded_size
+        elif item_type == ITEM_VOICE:
+            media_item["voice_size"] = raw_size
         elif item_type == ITEM_FILE:
             media_item["file_name"] = p.name
             media_item["len"] = str(raw_size)

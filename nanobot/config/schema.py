@@ -21,6 +21,17 @@ class TranscriptionConfig(Base):
     api_key: str = ""       # provider-specific key; falls back to providers.groq / providers.dashscope
 
 
+class TTSConfig(Base):
+    """TTS (text-to-speech) configuration for voice message synthesis."""
+
+    provider: str = "cosyvoice"       # only cosyvoice implemented
+    api_key: str = ""                 # falls back to DASHSCOPE_API_KEY env var
+    voice: str = "Asuka-Plus"         # CosyVoice voice ID
+    model: str = "cosyvoice-v3.5-plus"
+    format: str = "mp3"               # output audio format
+    preamble: str = ""                # prepended to every TTS call; set in config for persona
+
+
 class ChannelsConfig(Base):
     """Configuration for chat channels.
 
