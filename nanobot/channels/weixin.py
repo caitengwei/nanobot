@@ -743,6 +743,9 @@ class WeixinChannel(BaseChannel):
             logger.warning("WeChat send blocked: {}", e)
             return
 
+        # Pop voice session flag early so it is always cleared, even on early return.
+        wants_voice = self._voice_sessions.pop(msg.chat_id, False)
+
         content = msg.content.strip()
         ctx_token = self._context_tokens.get(msg.chat_id, "")
         if not ctx_token:
@@ -751,8 +754,6 @@ class WeixinChannel(BaseChannel):
                 msg.chat_id,
             )
             return
-
-        wants_voice = self._voice_sessions.pop(msg.chat_id, False)
 
         # --- TTS voice message (before text, matching media-first pattern) ---
         if wants_voice and content and self._tts_provider:
