@@ -78,7 +78,9 @@ UPLOAD_MEDIA_VOICE = 4
 # File extensions considered as images / videos / voices for outbound media
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg"}
 _VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}
-_VOICE_EXTS = {".mp3", ".ogg", ".wav", ".m4a"}
+# WeChat bot API does not support outbound voice_item (voice bubble) for C2C bots.
+# Audio files are sent as file_item so users can tap to play.
+_VOICE_EXTS: set[str] = set()
 
 # Voice trigger patterns — user requests a spoken reply
 _VOICE_TRIGGER_PATTERNS = re.compile(
@@ -788,8 +790,8 @@ class WeixinChannel(BaseChannel):
                     msg.chat_id, f"[Failed to send: {filename}]", ctx_token,
                 )
 
-        # --- Send text content (strip SSML only when voice was triggered) ---
-        text_content = self._strip_tts_tags(content) if wants_voice else content
+        # --- Send text content (always strip SSML tags defensively) ---
+        text_content = self._strip_tts_tags(content)
         if not text_content:
             return
 

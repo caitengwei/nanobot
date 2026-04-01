@@ -163,8 +163,12 @@ async def test_text_stripped_of_control_tags_when_voice_triggered():
 
 
 @pytest.mark.asyncio
-async def test_text_not_stripped_when_no_voice_trigger():
-    """SSML tags are NOT stripped from text when voice was not triggered."""
+async def test_ssml_always_stripped_even_without_voice_trigger():
+    """SSML tags are always stripped from text, even without a voice trigger.
+
+    This prevents raw XML from leaking to users when the LLM generates SSML
+    in non-voice contexts.
+    """
     ch = _make_channel(tts_api_key="sk-test")
     ch._token = "tok"
     ch._context_tokens = {"wx-user": "ctx-1"}
@@ -178,11 +182,11 @@ async def test_text_not_stripped_when_no_voice_trigger():
     ch._send_media_file = AsyncMock()
     ch._send_text = fake_send_text  # type: ignore
 
-    raw = '用 `<speak rate="0.9">` 标签控制语速'
-    msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=raw)
+    ssml = '<speak rate="0.9">你好世界</speak>'
+    msg = OutboundMessage(channel="weixin", chat_id="wx-user", content=ssml)
     await ch.send(msg)
 
-    assert sent_text == [raw]
+    assert sent_text == ["你好世界"]
 
 
 @pytest.mark.asyncio

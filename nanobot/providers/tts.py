@@ -32,6 +32,8 @@ def strip_tts_control_tags(text: str) -> str:
     """
     text = _SSML_VOID_RE.sub("", text)
     text = _SSML_WRAP_RE.sub("", text)
+    # Collapse runs of blank lines left behind by removed tags.
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 

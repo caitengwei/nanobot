@@ -95,6 +95,12 @@ def test_strip_tts_control_tags_preserves_normal_text():
     assert strip_tts_control_tags("今天天气很好") == "今天天气很好"
     assert strip_tts_control_tags("") == ""
     assert strip_tts_control_tags("  空格  ") == "空格"
+    # Blank lines left by removed SSML tags are collapsed to at most one blank line.
+    ssml = '<speak rate="0.9">\n\n<break time="500ms"/>\n\n明天开盘。\n\n<break time="400ms"/>\n\n后续观察。\n\n</speak>'
+    result = strip_tts_control_tags(ssml)
+    assert "\n\n\n" not in result
+    assert "明天开盘。" in result
+    assert "后续观察。" in result
 
 
 @pytest.mark.asyncio
