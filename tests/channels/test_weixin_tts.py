@@ -1,7 +1,7 @@
 """Tests for WeChat TTS voice message integration."""
 
 import tempfile
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -245,3 +245,48 @@ async def test_send_skips_tts_when_no_provider():
 
     assert sent_media == []
     assert sent_text == ["回复"]
+
+
+@pytest.mark.asyncio
+async def test_mp3_sent_as_file_item_not_voice_item(tmp_path):
+    """_send_media_file must route .mp3 to UPLOAD_MEDIA_FILE + ITEM_FILE, not voice_item.
+
+    _VOICE_EXTS is intentionally empty: WeChat C2C bot API silently drops outbound
+    voice_item messages. Audio files must use the file_item path so users can tap to play.
+    """
+    from nanobot.channels.weixin import ITEM_FILE, UPLOAD_MEDIA_FILE
+
+    ch = _make_channel(tts_api_key="sk-test")
+    ch._token = "tok"
+
+    mp3_file = tmp_path / "voice.mp3"
+    mp3_file.write_bytes(b"fake-mp3-data")
+
+    api_calls: list[tuple[str, dict]] = []
+
+    async def fake_api_post(endpoint: str, body: dict):
+        api_calls.append((endpoint, body))
+        if endpoint == "ilink/bot/getuploadurl":
+            return {"upload_param": "fake-upload-param"}
+        return {}
+
+    mock_cdn_resp = MagicMock()
+    mock_cdn_resp.headers = {"x-encrypted-param": "fake-download-param"}
+    mock_cdn_resp.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_cdn_resp)
+
+    ch._api_post = fake_api_post  # type: ignore
+    ch._client = mock_client
+
+    await ch._send_media_file("wx-user", str(mp3_file), "ctx-1")
+
+    upload_call = next(body for path, body in api_calls if path == "ilink/bot/getuploadurl")
+    assert upload_call["media_type"] == UPLOAD_MEDIA_FILE
+
+    send_call = next(body for path, body in api_calls if path == "ilink/bot/sendmessage")
+    item = send_call["msg"]["item_list"][0]
+    assert item["type"] == ITEM_FILE
+    assert "file_item" in item
+    assert "voice_item" not in item
