@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add Slack as an active channel in rei's `~/.nanobot/config.json` using the existing Socket Mode implementation.
+**Goal:** Add Slack as an active channel in rei's `~/.nanobot/config.json` and extend `SlackChannel` to handle inbound image/audio files.
 
-**Architecture:** No code changes required. The `SlackChannel` (Socket Mode) is fully implemented in `nanobot/channels/slack.py`. Only `~/.nanobot/config.json` needs a new `slack` section. On startup, `ChannelManager` auto-discovers and loads the Slack channel.
+**Architecture:** Two parts: (1) configuration — `~/.nanobot/config.json` needs a new `slack` section; `ChannelManager` auto-discovers and loads the channel on startup. (2) code — `nanobot/channels/slack.py` requires changes to download inbound `files[]` with Bearer-auth, transcribe audio via `transcribe_audio()`, and pass local paths to `_handle_message(media=[...])`.
 
 **Tech Stack:** slack-sdk (Socket Mode), slackify-markdown — both already installed.
 
@@ -30,6 +30,7 @@
 
   Left sidebar → **OAuth & Permissions** → **Bot Token Scopes** → Add:
   - `chat:write`
+  - `files:read`
   - `files:upload`
   - `reactions:add`
   - `reactions:remove`

@@ -358,3 +358,40 @@ async def test_inbound_file_download_failure_handled_gracefully(tmp_path, monkey
     msg = bus.inbound.get_nowait()
     assert msg.media == []
     assert "download failed" in msg.content
+
+
+@pytest.mark.asyncio
+async def test_inbound_file_too_large_skipped(tmp_path, monkeypatch) -> None:
+    """Files exceeding MAX_ATTACHMENT_BYTES are skipped without downloading."""
+    monkeypatch.setattr("nanobot.channels.slack.get_media_dir", lambda _: tmp_path)
+
+    ch, bus = _make_channel()
+    fake_http = _FakeHttpClient()
+    ch._http = fake_http
+
+    payload = {
+        "event": {
+            "type": "message",
+            "subtype": "file_share",
+            "user": "U123",
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "1700000000.000500",
+            "text": "",
+            "files": [
+                {
+                    "id": "FBIG1",
+                    "name": "huge.png",
+                    "mimetype": "image/png",
+                    "size": 21 * 1024 * 1024,  # 21MB > 20MB limit
+                    "url_private_download": "https://files.slack.com/files-pri/huge.png",
+                }
+            ],
+        }
+    }
+    await ch._on_socket_request(_FakeSocketClient(), _FakeSocketRequest(payload))
+
+    msg = bus.inbound.get_nowait()
+    assert msg.media == []
+    assert "too large" in msg.content
+    assert len(fake_http.get_calls) == 0  # no download attempted

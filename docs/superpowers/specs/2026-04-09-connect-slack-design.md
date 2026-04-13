@@ -1,15 +1,15 @@
 # Connect Slack to Rei — Design Spec
 
 **Date:** 2026-04-09  
-**Scope:** Pure configuration setup — no code changes required.
+**Scope:** Configuration setup + code changes to `nanobot/channels/slack.py` for inbound file handling.
 
 ---
 
 ## Summary
 
-Connect the Slack messaging channel to the rei agent by configuring the existing `SlackChannel` implementation (Socket Mode) in `~/.nanobot/config.json`.
+Connect the Slack messaging channel to the rei agent by configuring `~/.nanobot/config.json` and updating `nanobot/channels/slack.py` to support inbound image/audio file downloading and transcription.
 
-The implementation (`nanobot/channels/slack.py`) is complete. `slack-sdk` and `slackify-markdown` are already in `pyproject.toml`. Tests pass.
+`slack-sdk` and `slackify-markdown` are already in `pyproject.toml`. Tests pass.
 
 ---
 
@@ -29,6 +29,7 @@ At https://api.slack.com/apps, create a new app ("From scratch").
 
 **OAuth & Permissions → Bot Token Scopes:** Add:
 - `chat:write`
+- `files:read`
 - `files:upload`
 - `reactions:add`
 - `reactions:remove`

@@ -21,6 +21,8 @@ from nanobot.channels.base import BaseChannel
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
 
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024  # 20MB
+
 
 class SlackDMConfig(Base):
     """Slack DM policy configuration."""
@@ -279,6 +281,11 @@ class SlackChannel(BaseChannel):
             filename = (f.get("name") or f"slack_file_{idx}").replace("/", "_")
             file_id = f.get("id") or f"f{idx}"
             file_path = media_dir / f"{file_id}_{filename}"
+
+            size = f.get("size") or 0
+            if size and size > MAX_ATTACHMENT_BYTES:
+                content_tags.append(f"[attachment: {filename} - too large]")
+                continue
 
             try:
                 resp = await self._http.get(
