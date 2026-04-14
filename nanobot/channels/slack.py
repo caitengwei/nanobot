@@ -301,6 +301,7 @@ class SlackChannel(BaseChannel):
                 file_path.write_bytes(resp.content)
             except Exception as e:
                 logger.warning("Failed to download Slack attachment {}: {}", filename, e)
+                file_path.unlink(missing_ok=True)  # clean up any partial write
                 content_tags.append(f"[attachment: {filename} - download failed]")
                 continue
 
@@ -311,11 +312,12 @@ class SlackChannel(BaseChannel):
                     content_tags.append(f"[transcription: {transcription}]")
                 else:
                     content_tags.append(f"[audio: {file_path}]")
-                media_paths.append(str(file_path))
+                # audio handled via transcription text; context builder only processes images
             else:
                 media_type = "image" if mime.startswith("image/") else "file"
                 content_tags.append(f"[{media_type}: {file_path}]")
-                media_paths.append(str(file_path))
+                if mime.startswith("image/"):
+                    media_paths.append(str(file_path))
 
         return media_paths, content_tags
 

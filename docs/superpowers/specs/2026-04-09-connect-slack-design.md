@@ -30,7 +30,7 @@ At https://api.slack.com/apps, create a new app ("From scratch").
 **OAuth & Permissions → Bot Token Scopes:** Add:
 - `chat:write`
 - `files:read`
-- `files:upload`
+- `files:write`
 - `reactions:add`
 - `reactions:remove`
 - `channels:history`
