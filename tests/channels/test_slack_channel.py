@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 # Check optional Slack dependencies before running tests
@@ -429,9 +431,9 @@ async def test_inbound_file_path_traversal_sanitized(tmp_path, monkeypatch) -> N
     msg = bus.inbound.get_nowait()
     # File should be written to tmp_path only — no directory traversal
     assert len(msg.media) == 1
-    written_path = msg.media[0]
-    assert str(tmp_path) in written_path
-    assert "etc" not in written_path
+    written_path = Path(msg.media[0])
+    assert written_path.resolve().parent == tmp_path.resolve()
+    assert written_path.name == "FPATH1_passwd"
 
 
 @pytest.mark.asyncio

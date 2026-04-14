@@ -288,6 +288,7 @@ class SlackChannel(BaseChannel):
                 content_tags.append(f"[attachment: {filename} - too large]")
                 continue
 
+            part_path = file_path.with_suffix(file_path.suffix + ".part")
             try:
                 resp = await self._http.get(
                     url,
@@ -298,10 +299,11 @@ class SlackChannel(BaseChannel):
                 if len(resp.content) > MAX_ATTACHMENT_BYTES:
                     content_tags.append(f"[attachment: {filename} - too large]")
                     continue
-                file_path.write_bytes(resp.content)
+                part_path.write_bytes(resp.content)
+                part_path.rename(file_path)
             except Exception as e:
                 logger.warning("Failed to download Slack attachment {}: {}", filename, e)
-                file_path.unlink(missing_ok=True)  # clean up any partial write
+                part_path.unlink(missing_ok=True)  # clean up any partial write
                 content_tags.append(f"[attachment: {filename} - download failed]")
                 continue
 
