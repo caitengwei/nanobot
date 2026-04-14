@@ -395,3 +395,77 @@ async def test_inbound_file_too_large_skipped(tmp_path, monkeypatch) -> None:
     assert msg.media == []
     assert "too large" in msg.content
     assert len(fake_http.get_calls) == 0  # no download attempted
+
+
+@pytest.mark.asyncio
+async def test_inbound_file_path_traversal_sanitized(tmp_path, monkeypatch) -> None:
+    """Malicious filenames with path components are reduced to basename only."""
+    monkeypatch.setattr("nanobot.channels.slack.get_media_dir", lambda _: tmp_path)
+
+    ch, bus = _make_channel()
+    ch._http = _FakeHttpClient(content=b"data")
+
+    payload = {
+        "event": {
+            "type": "message",
+            "subtype": "file_share",
+            "user": "U123",
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "1700000000.000600",
+            "text": "",
+            "files": [
+                {
+                    "id": "FPATH1",
+                    "name": "../../etc/passwd",
+                    "mimetype": "image/png",
+                    "url_private_download": "https://files.slack.com/files-pri/evil.png",
+                }
+            ],
+        }
+    }
+    await ch._on_socket_request(_FakeSocketClient(), _FakeSocketRequest(payload))
+
+    msg = bus.inbound.get_nowait()
+    # File should be written to tmp_path only — no directory traversal
+    assert len(msg.media) == 1
+    written_path = msg.media[0]
+    assert str(tmp_path) in written_path
+    assert "etc" not in written_path
+
+
+@pytest.mark.asyncio
+async def test_inbound_file_too_large_enforced_by_content_length(tmp_path, monkeypatch) -> None:
+    """Files with no size metadata but oversized content are rejected after download."""
+    monkeypatch.setattr("nanobot.channels.slack.get_media_dir", lambda _: tmp_path)
+
+    ch, bus = _make_channel()
+    # size field absent (0), but response body exceeds limit
+    oversized_content = b"x" * (21 * 1024 * 1024)
+    ch._http = _FakeHttpClient(content=oversized_content)
+
+    payload = {
+        "event": {
+            "type": "message",
+            "subtype": "file_share",
+            "user": "U123",
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "1700000000.000700",
+            "text": "",
+            "files": [
+                {
+                    "id": "FBIG2",
+                    "name": "large_no_size.png",
+                    "mimetype": "image/png",
+                    # no "size" field
+                    "url_private_download": "https://files.slack.com/files-pri/large.png",
+                }
+            ],
+        }
+    }
+    await ch._on_socket_request(_FakeSocketClient(), _FakeSocketRequest(payload))
+
+    msg = bus.inbound.get_nowait()
+    assert msg.media == []
+    assert "too large" in msg.content

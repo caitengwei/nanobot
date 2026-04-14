@@ -278,12 +278,13 @@ class SlackChannel(BaseChannel):
             if not url:
                 continue
 
-            filename = (f.get("name") or f"slack_file_{idx}").replace("/", "_")
+            raw_name = f.get("name") or f"slack_file_{idx}"
+            filename = Path(raw_name.replace("\\", "/")).name or f"slack_file_{idx}"
             file_id = f.get("id") or f"f{idx}"
             file_path = media_dir / f"{file_id}_{filename}"
 
             size = f.get("size") or 0
-            if size and size > MAX_ATTACHMENT_BYTES:
+            if size > MAX_ATTACHMENT_BYTES:
                 content_tags.append(f"[attachment: {filename} - too large]")
                 continue
 
@@ -294,6 +295,9 @@ class SlackChannel(BaseChannel):
                     follow_redirects=True,
                 )
                 resp.raise_for_status()
+                if len(resp.content) > MAX_ATTACHMENT_BYTES:
+                    content_tags.append(f"[attachment: {filename} - too large]")
+                    continue
                 file_path.write_bytes(resp.content)
             except Exception as e:
                 logger.warning("Failed to download Slack attachment {}: {}", filename, e)
