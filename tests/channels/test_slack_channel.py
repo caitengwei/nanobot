@@ -435,8 +435,8 @@ async def test_inbound_file_path_traversal_sanitized(tmp_path, monkeypatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_inbound_file_too_large_enforced_by_content_length(tmp_path, monkeypatch) -> None:
-    """Files with no size metadata but oversized content are rejected after download."""
+async def test_inbound_file_too_large_enforced_by_body_size(tmp_path, monkeypatch) -> None:
+    """Files with no size metadata but oversized response body are rejected after download."""
     monkeypatch.setattr("nanobot.channels.slack.get_media_dir", lambda _: tmp_path)
 
     ch, bus = _make_channel()
