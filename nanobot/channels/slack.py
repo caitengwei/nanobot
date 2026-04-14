@@ -1,10 +1,14 @@
 """Slack channel implementation using Socket Mode."""
 
 import asyncio
+import mimetypes
 import re
+from pathlib import Path
 from typing import Any
 
+import httpx
 from loguru import logger
+from pydantic import Field
 from slack_sdk.socket_mode.request import SocketModeRequest
 from slack_sdk.socket_mode.response import SocketModeResponse
 from slack_sdk.socket_mode.websockets import SocketModeClient
@@ -13,10 +17,11 @@ from slackify_markdown import slackify_markdown
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
-from pydantic import Field
-
 from nanobot.channels.base import BaseChannel
+from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
+
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024  # 20MB
 
 
 class SlackDMConfig(Base):
@@ -63,6 +68,7 @@ class SlackChannel(BaseChannel):
         self._web_client: AsyncWebClient | None = None
         self._socket_client: SocketModeClient | None = None
         self._bot_user_id: str | None = None
+        self._http: httpx.AsyncClient | None = None
 
     async def start(self) -> None:
         """Start the Slack Socket Mode client."""
@@ -76,6 +82,7 @@ class SlackChannel(BaseChannel):
         self._running = True
 
         self._web_client = AsyncWebClient(token=self.config.bot_token)
+        self._http = httpx.AsyncClient(timeout=30.0)
         self._socket_client = SocketModeClient(
             app_token=self.config.app_token,
             web_client=self._web_client,
@@ -106,6 +113,9 @@ class SlackChannel(BaseChannel):
             except Exception as e:
                 logger.warning("Slack socket close failed: {}", e)
             self._socket_client = None
+        if self._http:
+            await self._http.aclose()
+            self._http = None
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through Slack."""
@@ -157,9 +167,7 @@ class SlackChannel(BaseChannel):
             return
 
         # Acknowledge right away
-        await client.send_socket_mode_response(
-            SocketModeResponse(envelope_id=req.envelope_id)
-        )
+        await client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
 
         payload = req.payload or {}
         event = payload.get("event") or {}
@@ -172,8 +180,9 @@ class SlackChannel(BaseChannel):
         sender_id = event.get("user")
         chat_id = event.get("channel")
 
-        # Ignore bot/system messages (any subtype = not a normal user message)
-        if event.get("subtype"):
+        subtype = event.get("subtype")
+        # Ignore bot/system messages; allow file_share (user-initiated file upload).
+        if subtype and subtype != "file_share":
             return
         if self._bot_user_id and sender_id == self._bot_user_id:
             return
@@ -206,6 +215,13 @@ class SlackChannel(BaseChannel):
             return
 
         text = self._strip_bot_mention(text)
+        content_parts = [text] if text else []
+        media_paths: list[str] = []
+
+        if event.get("files"):
+            downloaded, tags = await self._download_inbound_files(event)
+            media_paths.extend(downloaded)
+            content_parts.extend(tags)
 
         thread_ts = event.get("thread_ts")
         if self.config.reply_in_thread and not thread_ts:
@@ -228,7 +244,8 @@ class SlackChannel(BaseChannel):
             await self._handle_message(
                 sender_id=sender_id,
                 chat_id=chat_id,
-                content=text,
+                content="\n".join(p for p in content_parts if p) or "[empty message]",
+                media=media_paths or None,
                 metadata={
                     "slack": {
                         "event": event,
@@ -240,6 +257,71 @@ class SlackChannel(BaseChannel):
             )
         except Exception:
             logger.exception("Error handling Slack message from {}", sender_id)
+
+    async def _download_inbound_files(self, event: dict[str, Any]) -> tuple[list[str], list[str]]:
+        """Download files from a Slack event. Returns (local_paths, content_tags).
+
+        Uses url_private_download (preferred) or url_private, authenticated with
+        the bot token. Audio files are transcribed via transcribe_audio().
+        """
+        if not self._http:
+            return [], ["[attachment: download client unavailable]"]
+
+        media_dir: Path = get_media_dir("slack")
+        media_dir.mkdir(parents=True, exist_ok=True)
+
+        media_paths: list[str] = []
+        content_tags: list[str] = []
+
+        for idx, f in enumerate(event.get("files") or []):
+            url = f.get("url_private_download") or f.get("url_private")
+            if not url:
+                continue
+
+            raw_name = f.get("name") or f"slack_file_{idx}"
+            filename = Path(raw_name.replace("\\", "/")).name or f"slack_file_{idx}"
+            file_id = f.get("id") or f"f{idx}"
+            file_path = media_dir / f"{file_id}_{filename}"
+
+            size = f.get("size") or 0
+            if size > MAX_ATTACHMENT_BYTES:
+                content_tags.append(f"[attachment: {filename} - too large]")
+                continue
+
+            part_path = file_path.with_suffix(file_path.suffix + ".part")
+            try:
+                resp = await self._http.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.config.bot_token}"},
+                    follow_redirects=True,
+                )
+                resp.raise_for_status()
+                if len(resp.content) > MAX_ATTACHMENT_BYTES:
+                    content_tags.append(f"[attachment: {filename} - too large]")
+                    continue
+                part_path.write_bytes(resp.content)
+                part_path.rename(file_path)
+            except Exception as e:
+                logger.warning("Failed to download Slack attachment {}: {}", filename, e)
+                part_path.unlink(missing_ok=True)  # clean up any partial write
+                content_tags.append(f"[attachment: {filename} - download failed]")
+                continue
+
+            mime = (f.get("mimetype") or mimetypes.guess_type(filename)[0] or "").lower()
+            if mime.startswith("audio/"):
+                transcription = await self.transcribe_audio(file_path)
+                if transcription:
+                    content_tags.append(f"[transcription: {transcription}]")
+                else:
+                    content_tags.append(f"[audio: {file_path}]")
+                # audio handled via transcription text; context builder only processes images
+            else:
+                media_type = "image" if mime.startswith("image/") else "file"
+                content_tags.append(f"[{media_type}: {file_path}]")
+                if mime.startswith("image/"):
+                    media_paths.append(str(file_path))
+
+        return media_paths, content_tags
 
     async def _update_react_emoji(self, chat_id: str, ts: str | None) -> None:
         """Remove the in-progress reaction and optionally add a done reaction."""
