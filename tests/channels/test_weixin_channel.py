@@ -710,7 +710,7 @@ async def test_send_media_falls_back_to_upload_param_url(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_media_voice_file_uses_file_item_and_file_upload_type(tmp_path) -> None:
+async def test_send_media_voice_file_uses_voice_item_and_voice_upload_type(tmp_path) -> None:
     channel, _bus = _make_channel()
 
     media_file = tmp_path / "voice.mp3"
@@ -728,14 +728,14 @@ async def test_send_media_voice_file_uses_file_item_and_file_upload_type(tmp_pat
     await channel._send_media_file("wx-user", str(media_file), "ctx-voice")
 
     getupload_body = channel._api_post.await_args_list[0].args[1]
-    assert getupload_body["media_type"] == 3
+    assert getupload_body["media_type"] == 4
 
     sendmessage_body = channel._api_post.await_args_list[1].args[1]
     item = sendmessage_body["msg"]["item_list"][0]
-    assert item["type"] == 4
-    assert "file_item" in item
-    assert "voice_item" not in item
-    assert item["file_item"]["media"]["encrypt_query_param"] == "voice-dl-param"
+    assert item["type"] == 3
+    assert "voice_item" in item
+    assert "file_item" not in item
+    assert item["voice_item"]["media"]["encrypt_query_param"] == "voice-dl-param"
 
 
 @pytest.mark.asyncio

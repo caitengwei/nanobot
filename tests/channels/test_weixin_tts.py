@@ -1,7 +1,7 @@
 """Tests for WeChat TTS voice message integration."""
 
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -248,13 +248,9 @@ async def test_send_skips_tts_when_no_provider():
 
 
 @pytest.mark.asyncio
-async def test_mp3_sent_as_file_item_not_voice_item(tmp_path):
-    """_send_media_file must route .mp3 to UPLOAD_MEDIA_FILE + ITEM_FILE, not voice_item.
-
-    _VOICE_EXTS is intentionally empty: WeChat C2C bot API silently drops outbound
-    voice_item messages. Audio files must use the file_item path so users can tap to play.
-    """
-    from nanobot.channels.weixin import ITEM_FILE, UPLOAD_MEDIA_FILE
+async def test_mp3_sent_as_voice_item(tmp_path):
+    """_send_media_file routes .mp3 to UPLOAD_MEDIA_VOICE + ITEM_VOICE."""
+    from nanobot.channels.weixin import ITEM_VOICE, UPLOAD_MEDIA_VOICE
 
     ch = _make_channel(tts_api_key="sk-test")
     ch._token = "tok"
@@ -283,10 +279,10 @@ async def test_mp3_sent_as_file_item_not_voice_item(tmp_path):
     await ch._send_media_file("wx-user", str(mp3_file), "ctx-1")
 
     upload_call = next(body for path, body in api_calls if path == "ilink/bot/getuploadurl")
-    assert upload_call["media_type"] == UPLOAD_MEDIA_FILE
+    assert upload_call["media_type"] == UPLOAD_MEDIA_VOICE
 
     send_call = next(body for path, body in api_calls if path == "ilink/bot/sendmessage")
     item = send_call["msg"]["item_list"][0]
-    assert item["type"] == ITEM_FILE
-    assert "file_item" in item
-    assert "voice_item" not in item
+    assert item["type"] == ITEM_VOICE
+    assert "voice_item" in item
+    assert "file_item" not in item

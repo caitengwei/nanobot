@@ -106,9 +106,7 @@ UPLOAD_MEDIA_VOICE = 4
 # File extensions considered as images / videos / voices for outbound media
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg"}
 _VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}
-# WeChat bot API does not support outbound voice_item (voice bubble) for C2C bots.
-# Audio files are sent as file_item so users can tap to play.
-_VOICE_EXTS: set[str] = set()
+_VOICE_EXTS = {".mp3", ".wav", ".amr", ".silk", ".ogg", ".m4a", ".aac", ".flac"}
 
 # Voice trigger patterns — user requests a spoken reply
 _VOICE_TRIGGER_PATTERNS = re.compile(r"(你说|你来说|说给我听|用语音(说|回答|回复)|语音回复)")
